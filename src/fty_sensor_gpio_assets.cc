@@ -565,6 +565,30 @@ fty_sensor_gpio_assets_test (bool verbose)
 
     //  @selftest
 
+    // Note: If your selftest reads SCMed fixture data, please keep it in
+    // src/selftest-ro; if your test creates filesystem objects, please
+    // do so under src/selftest-rw. They are defined below along with a
+    // usecase for the variables (assert) to make compilers happy.
+    const char *SELFTEST_DIR_RO = "src/selftest-ro";
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
+    assert (SELFTEST_DIR_RO);
+    assert (SELFTEST_DIR_RW);
+    // Uncomment these to use C++ strings in C++ selftest code:
+    //std::string str_SELFTEST_DIR_RO = std::string(SELFTEST_DIR_RO);
+    //std::string str_SELFTEST_DIR_RW = std::string(SELFTEST_DIR_RW);
+    //assert ( (str_SELFTEST_DIR_RO != "") );
+    //assert ( (str_SELFTEST_DIR_RW != "") );
+    // NOTE that for "char*" context you need (str_SELFTEST_DIR_RO + "/myfilename").c_str()
+
+    // Common pattern for plain C:
+    // char *test_state_file = zsys_sprintf ("%s/state_file", SELFTEST_DIR_RW);
+    // assert (test_state_file != NULL);
+    // zstr_sendx (fs, "STATE_FILE", test_state_file, NULL);
+    // zstr_free (&test_state_file);
+
+    char *test_data_dir = zsys_sprintf ("%s/data/", SELFTEST_DIR_RO);
+    assert (test_data_dir != NULL);
+
     static const char* endpoint = "inproc://fty_sensor_gpio_assets_test";
 
     zactor_t *server = zactor_new (mlm_server, (void*) "Malamute");
@@ -578,7 +602,7 @@ fty_sensor_gpio_assets_test (bool verbose)
     zstr_sendx (assets, "CONNECT", endpoint, NULL);
     zstr_sendx (assets, "CONSUMER", FTY_PROTO_STREAM_ASSETS, ".*", NULL);
     // Use source-provided templates
-    zstr_sendx (assets, "TEMPLATE_DIR", "./data/", NULL);
+    zstr_sendx (assets, "TEMPLATE_DIR", test_data_dir, NULL);
     zclock_sleep (1000);
 
     mlm_client_t *asset_generator = mlm_client_new ();
@@ -768,6 +792,7 @@ fty_sensor_gpio_assets_test (bool verbose)
     }
 
     //  @end
+    zstr_free (&test_data_dir);
     mlm_client_destroy (&asset_generator);
     zactor_destroy (&assets);
     zactor_destroy (&server);

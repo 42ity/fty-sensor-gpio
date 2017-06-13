@@ -344,10 +344,22 @@ libgpio_test (bool verbose)
     // src/selftest-ro; if your test creates filesystem objects, please
     // do so under src/selftest-rw. They are defined below along with a
     // usecase for the variables (assert) to make compilers happy.
-    // const char *SELFTEST_DIR_RO = "src/selftest-ro";
-    // const char *SELFTEST_DIR_RW = "src/selftest-rw";
+    const char *SELFTEST_DIR_RO = "src/selftest-ro";
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
     assert (SELFTEST_DIR_RO);
     assert (SELFTEST_DIR_RW);
+    // Uncomment these to use C++ strings in C++ selftest code:
+    //std::string str_SELFTEST_DIR_RO = std::string(SELFTEST_DIR_RO);
+    //std::string str_SELFTEST_DIR_RW = std::string(SELFTEST_DIR_RW);
+    //assert ( (str_SELFTEST_DIR_RO != "") );
+    //assert ( (str_SELFTEST_DIR_RW != "") );
+    // NOTE that for "char*" context you need (str_SELFTEST_DIR_RO + "/myfilename").c_str()
+
+    // Common pattern for plain C:
+    // char *test_state_file = zsys_sprintf ("%s/state_file", SELFTEST_DIR_RW);
+    // assert (test_state_file != NULL);
+    // zstr_sendx (fs, "STATE_FILE", test_state_file, NULL);
+    // zstr_free (&test_state_file);
 
     // Write test
     // Let's first write to the dummy GPIO, so that the read works afterward

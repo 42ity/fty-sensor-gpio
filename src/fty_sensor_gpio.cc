@@ -31,6 +31,8 @@
 // TODO:
 // * Smart update of existing entries
 // * Tests for _server
+// * Location of "data" directory into a variable like other components
+//   (even if a hardcode for starters); use configure-script data preferably
 // * Documentation
 // ** README.md
 // ** actors as per https://github.com/zeromq/czmq/blob/master/src/zconfig.c#L15

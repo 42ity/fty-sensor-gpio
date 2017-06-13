@@ -742,21 +742,21 @@ fty_sensor_gpio_server_test (bool verbose)
     // do so under src/selftest-rw. They are defined below along with a
     // usecase for the variables (assert) to make compilers happy.
     const char *SELFTEST_DIR_RO = "src/selftest-ro";
-    const char *SELFTEST_DIR_RW = "src/selftest-rw/";
+    const char *SELFTEST_DIR_RW = "src/selftest-rw";
     assert (SELFTEST_DIR_RO);
     assert (SELFTEST_DIR_RW);
     // Uncomment these to use C++ strings in C++ selftest code:
-    //std::string str_SELFTEST_DIR_RO = std::string(SELFTEST_DIR_RO);
+    std::string str_SELFTEST_DIR_RO = std::string(SELFTEST_DIR_RO);
     std::string str_SELFTEST_DIR_RW = std::string(SELFTEST_DIR_RW);
-    //assert ( (str_SELFTEST_DIR_RO != "") );
-    //assert ( (str_SELFTEST_DIR_RW != "") );
+    assert ( (str_SELFTEST_DIR_RO != "") );
+    assert ( (str_SELFTEST_DIR_RW != "") );
     // NOTE that for "char*" context you need (str_SELFTEST_DIR_RO + "/myfilename").c_str()
 
     //  @selftest
 
     static const char* endpoint = "inproc://fty_sensor_gpio_server_test";
-    
-    std::string template_dir = str_SELFTEST_DIR_RW + "/data/";
+
+    std::string template_dir = str_SELFTEST_DIR_RO + "/data/";
     zsys_dir_create (template_dir.c_str());
     zactor_t *server = zactor_new (mlm_server, (void*) "Malamute");
     zstr_sendx (server, "BIND", endpoint, NULL);
@@ -877,6 +877,7 @@ fty_sensor_gpio_server_test (bool verbose)
         assert(recv);
         char *answer = zmsg_popstr (recv);
         assert ( answer );
+        zsys_debug("Got answer: '%s'", answer);
         assert ( streq (answer, "OK") );
         zstr_free(&answer);
         zmsg_destroy (&msg);

@@ -153,7 +153,7 @@ memcheck: src/fty_sensor_gpio_selftest $(abs_top_builddir)/$(SELFTEST_DIR_RW) $(
 	$(LIBTOOL) --mode=execute valgrind --tool=memcheck \
 		--leak-check=full --show-reachable=yes --error-exitcode=1 \
 		--suppressions=$(srcdir)/src/.valgrind.supp \
-		$(builddir)/src/fty_sensor_gpio_selftest
+		$(builddir)/src/fty_sensor_gpio_selftest --verbose
 
 # Run the selftest binary under valgrind to check for performance leaks
 callcheck: src/fty_sensor_gpio_selftest $(abs_top_builddir)/$(SELFTEST_DIR_RW) $(abs_top_builddir)/$(SELFTEST_DIR_RO)
