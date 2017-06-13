@@ -159,6 +159,8 @@ int main (int argc, char *argv [])
         if (!template_file) {
             template_dir = NULL;
             zsys_error ("Can't find sensors template files directory!");
+            zstr_free(&actor_name);
+            zstr_free(&endpoint);
             return EXIT_FAILURE;
         }
         else {

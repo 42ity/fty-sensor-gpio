@@ -838,7 +838,7 @@ fty_sensor_gpio_server_test (bool verbose)
         // Send an update and check for the generated metric
         zstr_sendx (self, "UPDATE", endpoint, NULL);
 // leak HERE?!
-//        zclock_sleep (500);
+        zclock_sleep (500);
 
         // Check the published metric
         zmsg_t *recv = mlm_client_recv (metrics_listener);
