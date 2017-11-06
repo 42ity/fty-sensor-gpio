@@ -72,6 +72,7 @@ int main (int argc, char *argv [])
 {
     char *config_file = NULL;
     zconfig_t *config = NULL;
+    const char *state_file = NULL;
     char* actor_name = NULL;
     char* endpoint = NULL;
     const char* str_poll_interval = NULL;
@@ -136,6 +137,8 @@ int main (int argc, char *argv [])
         if (streq (zconfig_get (config, "server/verbose", "false"), "true")) {
             verbose = true;
         }
+        // State file
+        state_file = s_get (config, "server/statefile", "/var/lib/fty/fty-sensor-gpio/state");
         // Polling interval
         str_poll_interval = s_get (config, "server/check_interval", "2000");
         if (str_poll_interval) {
