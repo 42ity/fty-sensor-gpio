@@ -38,8 +38,10 @@ TEST_CASE("sensor gpio server test")
     zactor_t* server = zactor_new(mlm_server, const_cast<char*>("Malamute"));
     zstr_sendx(server, "BIND", endpoint, nullptr);
 
+    printf("start server\n");
     zactor_t* self = zactor_new(fty_sensor_gpio_server, const_cast<char*>(FTY_SENSOR_GPIO_AGENT));
     REQUIRE(self);
+    printf("started server\n");
 
     // Forge a HW_CAP reply message
     // msg-correlation-id'/OK/'type'/'count'/'base_address'/'offset'/'mapping1'/'mapping_val1'/'mapping2'/'mapping_val2'/
