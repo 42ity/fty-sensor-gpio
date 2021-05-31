@@ -1,6 +1,0 @@
-   fty-sensor-gpio -> libsodium;
-   fty-sensor-gpio -> libzmq;
-   fty-sensor-gpio -> czmq;
-   fty-sensor-gpio -> malamute;
-   fty-sensor-gpio -> fty-common-logging;
-   fty-sensor-gpio -> fty-proto;

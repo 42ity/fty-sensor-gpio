@@ -26,7 +26,11 @@
 @end
 */
 
-#include "fty_sensor_gpio_classes.h"
+#include "fty_sensor_gpio.h"
+#include "fty_sensor_gpio_server.h"
+#include "fty_sensor_gpio_assets.h"
+#include <fty_proto.h>
+#include <fty_log.h>
 
 // TODO:
 // * Smart update of existing entries
@@ -176,13 +180,13 @@ int main (int argc, char *argv [])
 
     // Guess the template installation directory
     char *template_dir = NULL;
-    string template_filename = string("/usr/share/fty-sensor-gpio/data/") + string("DCS001.tpl");
+    std::string template_filename = std::string("/usr/share/fty-sensor-gpio/data/") + "DCS001.tpl";
     FILE *template_file = fopen(template_filename.c_str(), "r");
     if (!template_file) {
-        template_filename = string("./selftest-ro/data/") + string("DCS001.tpl");
+        template_filename = std::string("./selftest-ro/data/") + "DCS001.tpl";
         template_file = fopen(template_filename.c_str(), "r");
         if (!template_file) {
-            template_filename = string("./src/data/") + string("DCS001.tpl");
+            template_filename = std::string("./src/data/") + "DCS001.tpl";
             template_file = fopen(template_filename.c_str(), "r");
             if (!template_file) {
                 template_dir = NULL;
@@ -209,8 +213,8 @@ int main (int argc, char *argv [])
     log_debug ("Using sensors template directory: %s", template_dir);
 
 
-    zactor_t *server = zactor_new (fty_sensor_gpio_server, static_cast<void*>(actor_name));
-    zactor_t *assets = zactor_new (fty_sensor_gpio_assets, (void*)"gpio-assets");
+    zactor_t *server = zactor_new (fty_sensor_gpio_server, actor_name);
+    zactor_t *assets = zactor_new (fty_sensor_gpio_assets, const_cast<char*>("gpio-assets"));
 
     log_info ("%s - Agent which manages GPI sensors and GPO devices", actor_name);
 
@@ -231,7 +235,7 @@ int main (int argc, char *argv [])
     // * a request event message every 5 seconds, to request local HW capabilities
     // * asset actor production/consumption when server actor has received local HW capabilities
     zloop_t *gpio_events = zloop_new();
-    zloop_timer (gpio_events, poll_interval, 0, s_update_event, server);
+    zloop_timer (gpio_events, size_t(poll_interval), 0, s_update_event, server);
     zloop_timer (gpio_events, 5000, 0, s_request_hwcap_event, server);
     zloop_timer (gpio_events, 2000, 0, s_server_ready_event, assets);
     zloop_start (gpio_events);

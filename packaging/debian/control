@@ -25,19 +25,12 @@ Standards-Version: 4.0.1.0
 Build-Depends: debhelper (>= 9),
     cmake (>=3.0),
     fty-cmake-dev,
-    pkg-config,
-    libsodium-dev,
-    libzmq3-dev,
     libczmq-dev (>= 3.0.2),
     libmlm-dev (>= 1.0.0),
     libfty-common-dev,
     libfty-common-logging-dev,
     libfty-proto-dev,
-    libfty-shm-dev,
-    systemd,
-    dh-systemd,
-    asciidoc-base | asciidoc, xmlto,
-    dh-autoreconf
+    libfty-shm-dev
 
 Package: fty-sensor-gpio
 Architecture: any
