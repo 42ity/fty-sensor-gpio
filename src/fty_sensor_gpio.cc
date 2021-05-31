@@ -183,7 +183,7 @@ int main (int argc, char *argv [])
     std::string template_filename = std::string("/usr/share/fty-sensor-gpio/data/") + "DCS001.tpl";
     FILE *template_file = fopen(template_filename.c_str(), "r");
     if (!template_file) {
-        template_filename = std::string("./selftest-ro/data/") + "DCS001.tpl";
+        template_filename = std::string("tests/selftest-ro/data/") + "DCS001.tpl";
         template_file = fopen(template_filename.c_str(), "r");
         if (!template_file) {
             template_filename = std::string("./src/data/") + "DCS001.tpl";
