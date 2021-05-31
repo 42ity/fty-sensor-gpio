@@ -45,7 +45,6 @@ etn_test_target(${PROJECT_NAME}-lib
     CONFIGS
         tests/selftest-ro/*
     SOURCES
-        tests/libgpio.cpp
         tests/main.cpp
         tests/sensor_gpio_assets.cpp
         tests/sensor_gpio_server.cpp

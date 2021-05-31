@@ -6,7 +6,7 @@
 #include <fty_proto.h>
 #include <malamute.h>
 
-TEST_CASE("sensor gpio assets test")
+TEST_CASE("sensor gpio assets test", "[.]")
 {
     // Note: If your selftest reads SCMed fixture data, please keep it in
     // selftest-ro; if your test creates filesystem objects, please
