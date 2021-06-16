@@ -704,7 +704,7 @@ void fty_sensor_gpio_assets(zsock_t* pipe, void* args)
             zmsg_destroy(&message);
         } else if (which == mlm_client_msgpipe(self->mlm)) {
             zmsg_t* message = mlm_client_recv(self->mlm);
-            if (is_fty_proto(message)) {
+            if (fty_proto_is(message)) {
                 fty_proto_t* fmessage = fty_proto_decode(&message);
                 if (fty_proto_id(fmessage) == FTY_PROTO_ASSET) {
                     if (fty_proto_aux_string(fmessage, FTY_PROTO_ASSET_AUX_SUBTYPE, "sensorgpio") ||
