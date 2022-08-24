@@ -526,6 +526,7 @@ void request_sensor_assets(fty_sensor_gpio_assets_t* self)
         log_error("%s: no reply message received", self->name);
         zuuid_destroy(&uuid);
         zpoller_destroy(&poller);
+        return;
     }
 
     char* uuid_recv = zmsg_popstr(reply);
