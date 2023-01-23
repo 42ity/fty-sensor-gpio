@@ -202,25 +202,6 @@ static void free_fn(void** self_ptr)
     free(*self_ptr);
 }
 
-// FIXME: Malamute still lacks that!
-// receive message with timeout
-static zmsg_t* my_mlm_client_recv(mlm_client_t* client, int timeout)
-{
-    static zpoller_t* poller = nullptr;
-
-    if (zsys_interrupted)
-        return nullptr;
-
-    poller = zpoller_new(mlm_client_msgpipe(client), nullptr);
-
-    zsock_t* which = static_cast<zsock_t*>(zpoller_wait(poller, timeout));
-    zpoller_destroy(&poller);
-    if (which == mlm_client_msgpipe(client)) {
-        zmsg_t* reply = mlm_client_recv(client);
-        return reply;
-    }
-    return nullptr;
-}
 //  --------------------------------------------------------------------------
 //  Publish status of the pointed GPIO sensor
 
@@ -228,29 +209,34 @@ void publish_status(fty_sensor_gpio_server_t* self, gpx_info_t* sensor, int ttl)
 {
     log_debug("Publishing GPIO sensor %i (%s) status", sensor->gpx_number, sensor->asset_name);
 
+    char port[6]; // "GPI" + "xx" + '\0'
+    memset(port, 0, sizeof(port));
+    snprintf(port, sizeof(port), "GP%c%i", ((sensor->gpx_direction == GPIO_DIRECTION_IN) ? 'I' : 'O'), sensor->gpx_number);
+
     zhash_t* aux = zhash_new();
     zhash_autofree(aux);
-    char port[6]; // "GPI" + "xx" + '\0'
-    memset(&port[0], 0, 6);
-    snprintf(&port[0], 6, "GP%c%i", ((sensor->gpx_direction == GPIO_DIRECTION_IN) ? 'I' : 'O'), sensor->gpx_number);
-    zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_PORT, static_cast<void*>(&port[0]));
+    zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_PORT, static_cast<void*>(port));
     zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, static_cast<void*>(sensor->asset_name));
-    std::string msg_type = std::string("status.") + &port[0];
+
+    std::string msg_type = std::string("status.") + port;
 
     zmsg_t* msg = fty_proto_encode_metric(aux, uint64_t(time(nullptr)), uint32_t(ttl), msg_type.c_str(),
         sensor->parent, // sensor->asset_name
         libgpio_get_status_string(sensor->current_state).c_str(), "");
+
     zhash_destroy(&aux);
+
     if (msg) {
         std::string topic = msg_type + std::string("@") + sensor->parent;
-        //        "status." + port() + "@" + _location;
+        //        "status." + port + "@" + _location;
 
-        log_debug("\tPort: %s, type: %s, status: %s", &port[0], msg_type.c_str(),
+        log_debug("\tPort: %s, type: %s, status: %s", port, msg_type.c_str(),
             libgpio_get_status_string(sensor->current_state).c_str());
 
         int r = mlm_client_send(self->mlm, topic.c_str(), &msg);
-        if (r != 0)
-            log_debug("failed to send measurement %s result %", topic.c_str(), r);
+        if (r != 0) {
+            log_error("failed to send measurement %s (result: %d)", topic.c_str(), r);
+        }
         zmsg_destroy(&msg);
     }
 }
@@ -347,23 +333,7 @@ static void s_check_gpio_status(fty_sensor_gpio_server_t* self)
 void static s_handle_mailbox(fty_sensor_gpio_server_t* self, zmsg_t* message)
 {
     std::string subject = mlm_client_subject(self->mlm);
-    /*    std::string command = zmsg_popstr (message);
-        if (command == "") {
-            zmsg_destroy (&message);
-            log_warning ("Empty subject.");
-            return;
-        }
 
-        if (command != "GET") {
-            log_warning ("%s: Received unexpected command '%s'", self->name, command.c_str());
-            zmsg_t *reply = zmsg_new ();
-            zmsg_addstr(reply, "ERROR");
-            zmsg_addstr (reply, "BAD_COMMAND");
-            mlm_client_sendto (self->mlm, mlm_client_sender (self->mlm), subject.c_str(), nullptr, 1000, &reply);
-            zmsg_destroy (&reply);
-            return;
-        }
-    */
     // we assume all request command are MAILBOX DELIVER, and subject="gpio"
     if ((subject != "") && (subject != "GPO_INTERACTION") && (subject != "GPIO_TEMPLATE_ADD") &&
         (subject != "GPIO_MANIFEST") && (subject != "GPIO_MANIFEST_SUMMARY") && (subject != "GPIO_TEST") &&
@@ -731,7 +701,7 @@ void static s_handle_mailbox(fty_sensor_gpio_server_t* self, zmsg_t* message)
         }
 
         else if (subject == "ERROR") {
-            // Don't reply to ERROR messages
+            // Don't reply to ERROR messages !?
             log_warning("%s: Received ERROR subject from '%s', ignoring", self->name, mlm_client_sender(self->mlm));
         }
         zmsg_destroy(&reply);
@@ -826,8 +796,7 @@ static void s_load_state_file(fty_sensor_gpio_server_t* self, const char* state_
                 state->last_action = default_state;
             state->in_alert = 0;
 
-            char* asset_name_key = strdup(asset_name);
-            zhashx_update(self->gpo_states, static_cast<void*>(asset_name_key), static_cast<void*>(state));
+            zhashx_update(self->gpo_states, static_cast<void*>(asset_name), static_cast<void*>(state));
         }
     }
 
@@ -836,7 +805,11 @@ static void s_load_state_file(fty_sensor_gpio_server_t* self, const char* state_
 
 static void s_save_state_file(fty_sensor_gpio_server_t* self, const char* state_file)
 {
-    FILE* f_state = fopen(state_file, "w");
+    FILE* f_state = state_file ? fopen(state_file, "w") : nullptr;
+    if (!f_state) {
+        log_error("save state_file failed (state_file: %s)", state_file);
+        return;
+    }
 
     gpo_state_t* state = static_cast<gpo_state_t*>(zhashx_first(self->gpo_states));
     while (state != nullptr) {
@@ -846,11 +819,14 @@ static void s_save_state_file(fty_sensor_gpio_server_t* self, const char* state_
     }
 
     fclose(f_state);
+
+    log_info("save state_file success (state_file: %s, #items: %zu)",
+        state_file, zhashx_size(self->gpo_states));
 }
 
 //  --------------------------------------------------------------------------
 //  Request GPI/GPO capabilities from fty-info, to init our structures.
-//  Return 1 on error, 0 otherwise
+//  Return 0 if success
 int request_capabilities_info(fty_sensor_gpio_server_t* self, const char* type)
 {
     log_debug("%s:\tRequest GPIO capabilities info for '%s'", self->name, type);
@@ -862,6 +838,7 @@ int request_capabilities_info(fty_sensor_gpio_server_t* self, const char* type)
     }
 
     zmsg_t* reply = NULL;
+
     if (!self->test_mode) {
         // Request HW_CAP info for <type>
         zmsg_t*  msg  = zmsg_new();
@@ -880,7 +857,14 @@ int request_capabilities_info(fty_sensor_gpio_server_t* self, const char* type)
 
         log_debug("%s: %s capability request sent successfully", self->name, type);
 
-        reply = my_mlm_client_recv(self->mlm, 5000);
+        // get response
+        zpoller_t* poller = zpoller_new(mlm_client_msgpipe(self->mlm), nullptr);
+        void* which = poller ? zpoller_wait(poller, 5000) : nullptr;
+        if (which) {
+            reply = mlm_client_recv(self->mlm);
+        }
+        zpoller_destroy(&poller);
+
         if (!reply) {
             log_error("%s: no reply message received", self->name);
             zuuid_destroy(&uuid);
@@ -888,7 +872,7 @@ int request_capabilities_info(fty_sensor_gpio_server_t* self, const char* type)
         }
 
         char* uuid_recv = zmsg_popstr(reply);
-        if (0 != strcmp(zuuid_str_canonical(uuid), uuid_recv)) {
+        if (!(uuid_recv && streq(zuuid_str_canonical(uuid), uuid_recv))) {
             log_debug("%s: zuuid reply doesn't match request", self->name);
             zstr_free(&uuid_recv);
             zuuid_destroy(&uuid);
@@ -899,7 +883,7 @@ int request_capabilities_info(fty_sensor_gpio_server_t* self, const char* type)
         zuuid_destroy(&uuid);
 
         char* status = zmsg_popstr(reply);
-        if (streq(status, "ERROR")) {
+        if (status && streq(status, "ERROR")) {
             char* reason = zmsg_popstr(reply);
             log_error("%s: error message received (%s, reason: %s)", self->name, status, reason);
             zstr_free(&reason);
@@ -925,16 +909,17 @@ int request_capabilities_info(fty_sensor_gpio_server_t* self, const char* type)
 
     // sanity check on type requested Vs received
     char* value = zmsg_popstr(reply);
-    if (!streq(value, type)) {
+    if (!(value && streq(value, type))) {
         log_error("%s: mismatch in reply on the type received (should be %s ; is %s)", self->name, type, value);
         zstr_free(&value);
+        zmsg_destroy(&reply);
         return 1;
     }
     zstr_free(&value);
 
     // Process the GPx count
     value      = zmsg_popstr(reply);
-    int ivalue = atoi(value);
+    int ivalue = value ? atoi(value) : 0;
     log_debug("%s count=%i", type, ivalue);
     if (streq(type, "gpi")) {
         libgpio_set_gpi_count(self->gpio_lib, ivalue);
@@ -1005,16 +990,24 @@ void fty_sensor_gpio_server(zsock_t* pipe, void* args)
         log_error("Adress for fty-sensor-gpio actor is nullptr");
         return;
     }
-    char* state_file_path = nullptr;
 
     fty_sensor_gpio_server_t* self = fty_sensor_gpio_server_new(name);
-    assert(self);
+    if (!self) {
+        log_error("%s: fty_sensor_gpio_server_new failed", name);
+        return;
+    }
 
     zpoller_t* poller = zpoller_new(pipe, mlm_client_msgpipe(self->mlm), nullptr);
-    assert(poller);
+    if (!poller) {
+        log_error("%s: zpoller_new failed", self->name);
+        fty_sensor_gpio_server_destroy(&self);
+        return;
+    }
 
     zsock_signal(pipe, 0);
-    log_info("%s_server: Started", self->name);
+    log_info("%s: Started", self->name);
+
+    char* state_file_path = nullptr;
 
     while (!zsys_interrupted) {
         void* which = zpoller_wait(poller, TIMEOUT_MS);
@@ -1023,15 +1016,14 @@ void fty_sensor_gpio_server(zsock_t* pipe, void* args)
                 break;
             }
         }
-        if (which == pipe) {
+        else if (which == pipe) {
             zmsg_t* message = zmsg_recv(pipe);
             char*   cmd     = zmsg_popstr(message);
+            bool term = false;
             if (cmd) {
                 log_trace("received command %s", cmd);
                 if (streq(cmd, "$TERM")) {
-                    zstr_free(&cmd);
-                    zmsg_destroy(&message);
-                    goto exit;
+                    term = true;
                 } else if (streq(cmd, "CONNECT")) {
                     char* endpoint = zmsg_popstr(message);
                     if (!endpoint)
@@ -1069,8 +1061,8 @@ void fty_sensor_gpio_server(zsock_t* pipe, void* args)
                     // Request our config
                     int rvi = request_capabilities_info(self, "gpi");
                     int rvo = request_capabilities_info(self, "gpo");
-                    // We can now stop the reschedule loop
-                    if (!rvi && !rvo) {
+                    // We stop the reschedule loop if success
+                    if ((rvi == 0) && (rvo == 0)) {
                         log_debug("HW_CAP request succeeded");
                         hw_cap_inited = true;
                     }
@@ -1084,6 +1076,9 @@ void fty_sensor_gpio_server(zsock_t* pipe, void* args)
                 zstr_free(&cmd);
             }
             zmsg_destroy(&message);
+            if (term) {
+                break;
+            }
         } else if (which == mlm_client_msgpipe(self->mlm)) {
             zmsg_t* message = mlm_client_recv(self->mlm);
             if (streq(mlm_client_command(self->mlm), "MAILBOX DELIVER")) {
@@ -1093,10 +1088,13 @@ void fty_sensor_gpio_server(zsock_t* pipe, void* args)
             zmsg_destroy(&message);
         }
     }
-exit:
-    if (!self->test_mode)
+
+    if (!self->test_mode) {
         s_save_state_file(self, state_file_path);
+    }
     zstr_free(&state_file_path);
     zpoller_destroy(&poller);
+
+    log_info("%s: ended", self->name);
     fty_sensor_gpio_server_destroy(&self);
 }
