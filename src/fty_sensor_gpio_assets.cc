@@ -81,7 +81,7 @@ static void sensor_free(void** item)
 
 static void* sensor_dup(const void* item)
 {
-    // Simply return item itself  // ?!
+    // Simply return item itself  // ?!!
     return const_cast<void*>(item);
 }
 
