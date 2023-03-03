@@ -48,13 +48,12 @@ zlistx_t* get_gpx_list()
 //  --------------------------------------------------------------------------
 //  zlist handling -- destroy an item
 
-static void sensor_free(void** item)
+static void sensor_destroy(gpx_info_t** item)
 {
     if (!(item && *item))
         return;
 
-    gpx_info_t* gpx_info = static_cast<gpx_info_t*>(*item);
-
+    gpx_info_t* gpx_info = *item;
 
     zstr_free(&gpx_info->manufacturer);
     zstr_free(&gpx_info->asset_name);
@@ -67,8 +66,14 @@ static void sensor_free(void** item)
     zstr_free(&gpx_info->alarm_message);
     zstr_free(&gpx_info->alarm_severity);
 
+    memset(gpx_info, 0, sizeof(*gpx_info));
     free(gpx_info);
     *item = NULL;
+}
+
+static void sensor_free(void** item)
+{
+    sensor_destroy(reinterpret_cast<gpx_info_t**>(item));
 }
 
 //  --------------------------------------------------------------------------
@@ -141,8 +146,8 @@ int add_sensor(fty_sensor_gpio_assets_t* self, const char* operation, const char
             }
         }
     }
-    gpx_info_t* prev_gpx_info = NULL;
-    gpx_info_t* gpx_info      = sensor_new();
+
+    gpx_info_t* gpx_info = sensor_new();
     if (!gpx_info) {
         log_error("Can't allocate gpx_info!");
         return 1;
@@ -153,12 +158,15 @@ int add_sensor(fty_sensor_gpio_assets_t* self, const char* operation, const char
     gpx_info->ext_name     = strdup(extname);
     gpx_info->part_number  = strdup(asset_subtype);
     gpx_info->type         = strdup(sensor_type);
+
     if (libgpio_get_status_value(sensor_normal_state) != GPIO_STATE_UNKNOWN)
         gpx_info->normal_state = libgpio_get_status_value(sensor_normal_state);
     else {
         log_error("provided normal_state '%s' is not valid!", sensor_normal_state);
+        sensor_destroy(&gpx_info);
         return 1;
     }
+
     gpx_info->gpx_number = gpx_number;
     //    gpx_info->pin_number = atoi(sensor_pin_number);
     if (streq(sensor_gpx_direction, "GPO")) {
@@ -168,6 +176,7 @@ int add_sensor(fty_sensor_gpio_assets_t* self, const char* operation, const char
     } else {
         gpx_info->gpx_direction = GPIO_DIRECTION_IN;
     }
+
     if (sensor_parent)
         gpx_info->parent = strdup(sensor_parent);
     if (sensor_location)
@@ -184,7 +193,7 @@ int add_sensor(fty_sensor_gpio_assets_t* self, const char* operation, const char
     pthread_mutex_lock(&gpx_list_mutex);
 
     // Check for an already existing entry for this asset
-    prev_gpx_info = static_cast<gpx_info_t*>(zlistx_find(_gpx_list, static_cast<void*>(gpx_info)));
+    gpx_info_t* prev_gpx_info = static_cast<gpx_info_t*>(zlistx_find(_gpx_list, static_cast<void*>(gpx_info)));
 
     if (prev_gpx_info != NULL) {
         // In case of update, we remove the previous entry, and create a new one
@@ -193,15 +202,21 @@ int add_sensor(fty_sensor_gpio_assets_t* self, const char* operation, const char
             if (zlistx_delete(_gpx_list, static_cast<void*>(prev_gpx_info)) == -1) {
                 log_error("Update: error deleting the previous GPx record for '%s'!", assetname);
                 pthread_mutex_unlock(&gpx_list_mutex);
+                sensor_destroy(&gpx_info);
                 return -1;
             }
         } else {
             log_debug("Sensor '%s' is already monitored. Skipping!", assetname);
             pthread_mutex_unlock(&gpx_list_mutex);
+            sensor_destroy(&gpx_info);
             return 0;
         }
     }
-    zlistx_add_end(_gpx_list, static_cast<void*>(gpx_info));
+
+    if (!zlistx_add_end(_gpx_list, static_cast<void*>(gpx_info))) {
+        log_error("zlistx_add_ failed");
+        sensor_destroy(&gpx_info);
+    }
 
     pthread_mutex_unlock(&gpx_list_mutex);
 
@@ -250,12 +265,12 @@ static int delete_sensor(fty_sensor_gpio_assets_t* self, const char* assetname)
     }
     gpx_info->asset_name = strdup(assetname);
 
-    int retval = 0;
     pthread_mutex_lock(&gpx_list_mutex);
 
     gpx_info_t* gpx_info_result = static_cast<gpx_info_t*>(zlistx_find(_gpx_list, static_cast<void*>(gpx_info)));
-    sensor_free(reinterpret_cast<void**>(&gpx_info));
+    sensor_destroy(&gpx_info);
 
+    int retval = 0;
     if (!gpx_info_result) {
         retval = 1;
     } else {
