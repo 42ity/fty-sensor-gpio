@@ -116,7 +116,7 @@ int main (int argc, char *argv [])
         if (streq (argv [argn], "--help")
         ||  streq (argv [argn], "-h")) {
             usage();
-            return 0;
+            return EXIT_SUCCESS;
         }
         else if (streq (argv [argn], "--verbose") || streq (argv [argn], "-v")) {
             verbose = true;
@@ -163,6 +163,7 @@ int main (int argc, char *argv [])
         actor_name = strdup(s_get (config, "malamute/address", NULL));
         log_config = strdup(s_get (config, "log/config", DEFAULT_LOG_CONFIG));
     }
+
     if (actor_name == NULL)
         actor_name = strdup(FTY_SENSOR_GPIO_AGENT);
 
@@ -176,42 +177,44 @@ int main (int argc, char *argv [])
         ManageFtyLog::getInstanceFtylog()->setConfigFile(std::string(log_config));
 
     if (verbose)
-        ManageFtyLog::getInstanceFtylog()->setVeboseMode();
+        ManageFtyLog::getInstanceFtylog()->setVerboseMode();
 
     // Guess the template installation directory
     char *template_dir = NULL;
-    std::string template_filename = std::string("/usr/share/fty-sensor-gpio/data/") + "DCS001.tpl";
-    FILE *template_file = fopen(template_filename.c_str(), "r");
-    if (!template_file) {
-        template_filename = std::string("tests/selftest-ro/data/") + "DCS001.tpl";
-        template_file = fopen(template_filename.c_str(), "r");
+    {
+        std::string template_filename = std::string("/usr/share/fty-sensor-gpio/data/") + "DCS001.tpl";
+        FILE *template_file = fopen(template_filename.c_str(), "r");
         if (!template_file) {
-            template_filename = std::string("./src/data/") + "DCS001.tpl";
+            template_filename = std::string("tests/selftest-ro/data/") + "DCS001.tpl";
             template_file = fopen(template_filename.c_str(), "r");
             if (!template_file) {
-                template_dir = NULL;
-                log_error ("Can't find sensors template files directory!");
-                zstr_free(&actor_name);
-                zstr_free(&endpoint);
-                return EXIT_FAILURE;
+                template_filename = std::string("./src/data/") + "DCS001.tpl";
+                template_file = fopen(template_filename.c_str(), "r");
+                if (!template_file) {
+                    log_error ("Can't find sensors template files directory!");
+                    zstr_free(&actor_name);
+                    zstr_free(&endpoint);
+                    zstr_free(&log_config);
+                    zstr_free(&state_file);
+                    return EXIT_FAILURE;
+                }
+                else {
+                    // Running from the top level directory
+                    template_dir = strdup("./src/data/");
+                }
             }
             else {
-                // Running from the top level directory
-                template_dir = strdup("./src/data/");
+                // Running from src/ directory
+                template_dir = strdup("./data/");
             }
         }
         else {
-            // Running from src/ directory
-            template_dir = strdup("./data/");
+            // Running from installed package
+            template_dir = strdup("/usr/share/fty-sensor-gpio/data/");
         }
+        fclose(template_file);
     }
-    else {
-        // Running from installed package
-        template_dir = strdup("/usr/share/fty-sensor-gpio/data/");
-    }
-    fclose(template_file);
     log_debug ("Using sensors template directory: %s", template_dir);
-
 
     zactor_t *server = zactor_new (fty_sensor_gpio_server, actor_name);
     zactor_t *assets = zactor_new (fty_sensor_gpio_assets, const_cast<char*>("gpio-assets"));

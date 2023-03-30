@@ -195,11 +195,10 @@ const char* s_get(zconfig_t* config, const char* key, const char* dfl)
 
 static void free_fn(void** self_ptr)
 {
-    if (!self_ptr || !*self_ptr) {
-        log_error("Attempt to free nullptr");
-        return;
+    if (self_ptr && (*self_ptr)) {
+        free(*self_ptr);
+        *self_ptr = NULL;
     }
-    free(*self_ptr);
 }
 
 //  --------------------------------------------------------------------------
@@ -726,6 +725,7 @@ fty_sensor_gpio_server_t* fty_sensor_gpio_server_new(const char* name)
     self->gpio_lib = libgpio_new();
     assert(self->gpio_lib);
     self->gpo_states = zhashx_new();
+    assert(self->gpo_states);
     zhashx_set_destructor(self->gpo_states, free_fn);
     return self;
 }
@@ -736,16 +736,14 @@ fty_sensor_gpio_server_t* fty_sensor_gpio_server_new(const char* name)
 
 void fty_sensor_gpio_server_destroy(fty_sensor_gpio_server_t** self_p)
 {
-    assert(self_p);
-    if (*self_p) {
+    if (self_p && (*self_p)) {
         fty_sensor_gpio_server_t* self = *self_p;
 
         //  Free class properties
         libgpio_destroy(&self->gpio_lib);
         zstr_free(&self->name);
         mlm_client_destroy(&self->mlm);
-        if (self->template_dir)
-            zstr_free(&self->template_dir);
+        zstr_free(&self->template_dir);
         zhashx_destroy(&self->gpo_states);
         //  Free object itself
         free(self);
