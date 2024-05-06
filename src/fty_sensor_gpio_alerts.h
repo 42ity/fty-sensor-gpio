@@ -20,6 +20,7 @@
 */
 
 #pragma once
+
 #include <czmq.h>
 
 /// fty_sensor_gpio_alerts actor

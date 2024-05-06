@@ -20,6 +20,7 @@
 */
 
 #pragma once
+
 #include <czmq.h>
 #include <string>
 
