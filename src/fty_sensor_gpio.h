@@ -21,7 +21,6 @@
 
 #pragma once
 
-
 #include <cstddef>
 #include <czmq.h>
 #include <iostream>

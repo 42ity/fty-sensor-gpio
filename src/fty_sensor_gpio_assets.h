@@ -20,6 +20,7 @@
 */
 
 #pragma once
+
 #include <malamute.h>
 
 ///  Structure of our class
@@ -40,9 +41,6 @@ fty_sensor_gpio_assets_t* fty_sensor_gpio_assets_new(const char* name);
 
 ///  Destroy the fty_sensor_gpio_assets
 void fty_sensor_gpio_assets_destroy(fty_sensor_gpio_assets_t** self_p);
-
-///  Self test of this class
-void fty_sensor_gpio_assets_test(bool verbose);
 
 ///  List accessor
 int add_sensor(fty_sensor_gpio_assets_t* self, const char* operation, const char* manufacturer, const char* assetname,
