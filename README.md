@@ -30,7 +30,8 @@ To run fty-sensor-gpio project:
 * from within the source tree, run:
 
 ```bash
-./src/fty-sensor-gpio
+cd build/
+make && ./fty-sensor-gpio
 ```
 
 For the other options available, refer to the manual page of fty-sensor-gpio
@@ -46,13 +47,13 @@ systemctl start fty-sensor-gpio
 To configure fty-sensor-gpio, a configuration file exists: fty-sensor-gpio.cfg
 
 Beside from the standard configuration directives, under the server and malamute
-sections, hardware capabilities are requested to the fty-info agents, to adapt
+sections, hardware capabilities are requested to the `fty-info` agents, to adapt
 to the behavior of fty-sensor-gpio, using:
 
 * HW_CAP/'msg-correlation-id'/gpi
 * HW_CAP/'msg-correlation-id'/gpo
 
-This answer will allow to get: 
+This answer will allow to get:
 * gpi_count: (mandatory) the number of GPI (10 on IPC3000)
 * gpo_count: (mandatory) the number of GPO (5 on IPC3000)
 * gpio_base_address: (optional) the target address of the GPIO chipset (488 for
