@@ -220,25 +220,21 @@ TEST_CASE("sensor gpio server test")
         print_metrics();
 
         fty_proto_t* metric = NULL;
-        rv = fty::shm::read_metric("IPC1", "status.GPI1", &metric);
+        rv = fty::shm::read_metric("sensorgpio-10", "status.GPI1", &metric);
         CHECK(rv == 0);
         if (metric) fty_proto_print(metric);
-        CHECK(streq(fty_proto_name(metric), "IPC1"));
+        CHECK(streq(fty_proto_name(metric), "sensorgpio-10"));
         CHECK(streq(fty_proto_type(metric), "status.GPI1"));
-        CHECK(streq(fty_proto_aux_string(metric, "port", nullptr), "GPI1"));
         CHECK(streq(fty_proto_value(metric), "closed"));
-        CHECK(streq(fty_proto_aux_string(metric, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, nullptr), "sensorgpio-10"));
         fty_proto_destroy(&metric);
 
         metric = NULL;
-        rv = fty::shm::read_metric("IPC1", "status.GPO2", &metric);
+        rv = fty::shm::read_metric("gpo-11", "status.GPO2", &metric);
         CHECK(rv == 0);
         if (metric) fty_proto_print(metric);
-        CHECK(streq(fty_proto_name(metric), "IPC1"));
+        CHECK(streq(fty_proto_name(metric), "gpo-11"));
         CHECK(streq(fty_proto_type(metric), "status.GPO2"));
-        CHECK(streq(fty_proto_aux_string(metric, "port", nullptr), "GPO2"));
         CHECK(streq(fty_proto_value(metric), "closed"));
-        CHECK(streq(fty_proto_aux_string(metric, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, nullptr), "gpo-11"));
         fty_proto_destroy(&metric);
     }
 

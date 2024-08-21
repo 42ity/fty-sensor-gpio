@@ -209,32 +209,31 @@ static void publish_status(gpx_info_t* sensor, int ttl)
 {
     log_debug("Publishing GPIO sensor %i (%s) status", sensor->gpx_number, sensor->asset_name);
 
-    char port[6]; // "GPI" + "xx" + '\0'
+    char port[16]; // "GPI" + "xx" + '\0'
     memset(port, 0, sizeof(port));
     snprintf(port, sizeof(port), "GP%c%i", ((sensor->gpx_direction == GPIO_DIRECTION_IN) ? 'I' : 'O'), sensor->gpx_number);
 
-    zhash_t* aux = zhash_new();
-    zhash_autofree(aux);
-    zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_PORT, static_cast<void*>(port));
-    zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, static_cast<void*>(sensor->asset_name));
+    std::string type = "status." + std::string(port);
 
-    std::string msg_type = std::string("status.") + port;
-
-    zmsg_t* msg = fty_proto_encode_metric(aux, uint64_t(time(nullptr)), uint32_t(ttl), msg_type.c_str(),
-        sensor->parent, // sensor->asset_name
-        libgpio_get_status_string(sensor->current_state).c_str(), "");
-
-    zhash_destroy(&aux);
+    zmsg_t* msg = fty_proto_encode_metric(
+        NULL /*aux*/,
+        uint64_t(time(nullptr)),
+        uint32_t(ttl),
+        type.c_str(),
+        sensor->asset_name,
+        libgpio_get_status_string(sensor->current_state).c_str(),
+        "" /*unit*/
+    );
 
     if (msg) {
-        std::string topic = msg_type + std::string("@") + sensor->parent; // "status." + port + "@" + _location;
+        log_debug("Port: %s, type: %s, status: %s", port, type.c_str(), libgpio_get_status_string(sensor->current_state).c_str());
 
-        log_debug("Port: %s, type: %s, status: %s", port, msg_type.c_str(), libgpio_get_status_string(sensor->current_state).c_str());
-
-        // write in Shared Memory
+        // write in shared memory
         fty_proto_t* metric = fty_proto_decode(&msg);
         int r = metric ? fty::shm::write_metric(metric) : -99;
         fty_proto_destroy(&metric);
+
+        std::string topic = type + std::string("@") + sensor->asset_name; // "status." + port + "@" + sname;
         if (r != 0) {
             log_error("failed to write metric %s (result: %d)", topic.c_str(), r);
         }
@@ -242,8 +241,8 @@ static void publish_status(gpx_info_t* sensor, int ttl)
             log_debug("shm write_metric succeeded (%s)", topic.c_str());
         }
 
-        zmsg_destroy(&msg);
     }
+    zmsg_destroy(&msg);
 }
 
 //  --------------------------------------------------------------------------
