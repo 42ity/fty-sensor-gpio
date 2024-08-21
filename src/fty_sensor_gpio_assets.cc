@@ -646,6 +646,11 @@ fty_sensor_gpio_assets_t* fty_sensor_gpio_assets_new(const char* name)
     return self;
 }
 
+// conf. for UT
+void fty_sensor_gpio_assets_set_test(fty_sensor_gpio_assets_t* self, bool test_mode)
+{
+    if (self) self->test_mode = test_mode;
+}
 
 //  --------------------------------------------------------------------------
 //  Destroy the fty_sensor_gpio_assets
@@ -703,12 +708,11 @@ void fty_sensor_gpio_assets(zsock_t* pipe, void* args)
         else if (which == pipe) {
             zmsg_t* message = zmsg_recv(pipe);
             char*   cmd     = zmsg_popstr(message);
+            bool term{false};
             if (cmd) {
                 log_debug("received command %s", cmd);
                 if (streq(cmd, "$TERM")) {
-                    zstr_free(&cmd);
-                    zmsg_destroy(&message);
-                    break;
+                    term = true;
                 } else if (streq(cmd, "CONNECT")) {
                     char* endpoint = zmsg_popstr(message);
                     if (!endpoint)
@@ -746,6 +750,9 @@ void fty_sensor_gpio_assets(zsock_t* pipe, void* args)
             }
             zstr_free(&cmd);
             zmsg_destroy(&message);
+            if (term) {
+                break;
+            }
         }
         else if (which == mlm_client_msgpipe(self->mlm)) {
             zmsg_t* message = mlm_client_recv(self->mlm);

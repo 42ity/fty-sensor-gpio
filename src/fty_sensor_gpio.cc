@@ -60,10 +60,9 @@ usage(){
 }
 
 // Send an update request over the MQ to check for GPIO status
-static int s_update_event (zloop_t *loop, int timer_id, void *output)
+static int s_update_event (zloop_t* /*loop*/, int timer_id, void *output)
 {
-    // Please the compiler
-    if (loop && timer_id)
+    if (timer_id)
         zstr_send (output, "UPDATE");
     return 0;
 }
@@ -102,8 +101,6 @@ int main (int argc, char *argv [])
     const char* str_poll_interval = NULL;
     int poll_interval = DEFAULT_POLL_INTERVAL;
     bool verbose = false;
-
-    ManageFtyLog::setInstanceFtylog(FTY_SENSOR_GPIO_AGENT);
 
     // Parse command line
     for (int argn = 1; argn < argc; argn++) {
@@ -239,7 +236,6 @@ int main (int argc, char *argv [])
     // 1rst (main) actor to handle GPx polling, metrics publication and mailbox requests
     // -server MUST be init'ed prior to -asset
     zstr_sendx (server, "CONNECT", endpoint, NULL);
-    zstr_sendx (server, "PRODUCER", FTY_PROTO_STREAM_METRICS_SENSOR, NULL);
     zstr_sendx (server, "TEMPLATE_DIR", template_dir, NULL);
     zstr_sendx (server, "STATEFILE", state_file, NULL);
 
@@ -258,7 +254,8 @@ int main (int argc, char *argv [])
     // main loop
     zloop_start (gpio_events);
 
-    // Cleanup
+    log_info ("%s - ended", actor_name);
+
     CLEANUP;
 
     return EXIT_SUCCESS;
