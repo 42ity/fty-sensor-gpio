@@ -31,7 +31,6 @@
 #define FTY_SENSOR_GPIO_AGENT  "fty-sensor-gpio"
 #define DEFAULT_POLL_INTERVAL  2000
 #define DEFAULT_STATEFILE_PATH "/var/lib/fty/fty-sensor-gpio/state"
-#define DEFAULT_LOG_CONFIG     "/etc/fty/ftylog.cfg"
 
 // TODO: get from config
 #define TIMEOUT_MS -1 // wait infinitely

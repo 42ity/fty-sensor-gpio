@@ -32,6 +32,8 @@
 #include <fty_proto.h>
 #include <fty_log.h>
 
+#define DEFAULT_LOG_CONFIG FTY_COMMON_LOGGING_DEFAULT_CFG
+
 // TODO:
 // * Smart update of existing entries
 // * Ensure we don't return OK/ERROR
@@ -58,8 +60,7 @@ usage(){
 }
 
 // Send an update request over the MQ to check for GPIO status
-static int
-s_update_event (zloop_t *loop, int timer_id, void *output)
+static int s_update_event (zloop_t *loop, int timer_id, void *output)
 {
     // Please the compiler
     if (loop && timer_id)
@@ -68,8 +69,7 @@ s_update_event (zloop_t *loop, int timer_id, void *output)
 }
 
 // Schedule HW_CAP request to do the initial configuration for local GPI/GPO
-static int
-s_request_hwcap_event (zloop_t *loop, int timer_id, void *output)
+static int s_request_hwcap_event (zloop_t *loop, int timer_id, void *output)
 {
     if (!hw_cap_inited) {
         zstr_send (output, "HW_CAP");
@@ -80,8 +80,7 @@ s_request_hwcap_event (zloop_t *loop, int timer_id, void *output)
 }
 
 // Condition asset actor on the successful configuration of server actor (HW_CAP)
-static int
-s_server_ready_event (zloop_t *loop, int timer_id, void *output)
+static int s_server_ready_event (zloop_t *loop, int timer_id, void *output)
 {
     if (hw_cap_inited) {
         zstr_sendx (output, "PRODUCER", FTY_PROTO_STREAM_ASSETS, NULL);
@@ -103,81 +102,80 @@ int main (int argc, char *argv [])
     const char* str_poll_interval = NULL;
     int poll_interval = DEFAULT_POLL_INTERVAL;
     bool verbose = false;
-    int argn;
-    char *log_config = NULL;
 
     ManageFtyLog::setInstanceFtylog(FTY_SENSOR_GPIO_AGENT);
 
     // Parse command line
-    for (argn = 1; argn < argc; argn++) {
-        char *param = NULL;
-        if (argn < argc - 1) param = argv [argn+1];
+    for (int argn = 1; argn < argc; argn++) {
+        const char* arg = argv [argn];
+        char *param = ((argn + 1) < argc) ? argv [argn + 1] : NULL;
 
-        if (streq (argv [argn], "--help")
-        ||  streq (argv [argn], "-h")) {
+        if (streq (arg, "--help") ||  streq (arg, "-h")) {
             usage();
             return EXIT_SUCCESS;
         }
-        else if (streq (argv [argn], "--verbose") || streq (argv [argn], "-v")) {
+        else if (streq (arg, "--verbose") || streq (arg, "-v")) {
             verbose = true;
         }
-        else if (streq (argv [argn], "--config") || streq (argv [argn], "-c")) {
+        else if (streq (arg, "--config") || streq (arg, "-c")) {
             if (param) config_file = param;
             ++argn;
         }
-        else if (streq (argv [argn], "--endpoint") || streq (argv [argn], "-e")) {
+        else if (streq (arg, "--endpoint") || streq (arg, "-e")) {
             if (param) endpoint = strdup(param);
             ++argn;
         }
         else {
-            // FIXME: as per the systemd service file, the config file
-            // is provided as the default arg without '-c'!
-            // So, should we consider this?
-            printf ("Unknown option: %s\n", argv [argn]);
-            return 1;
+            printf ("Unknown option: %s\n", arg);
+            return EXIT_FAILURE;
         }
     }
 
+    ftylog_setInstance(FTY_SENSOR_GPIO_AGENT, FTY_COMMON_LOGGING_DEFAULT_CFG);
+    if (verbose) {
+        ftylog_setVerboseMode(ftylog_getInstance());
+    }
+
     // Parse config file
-    if(config_file) {
+    if (config_file) {
         log_debug ("fty_sensor_gpio: loading configuration file '%s'", config_file);
         config = zconfig_load (config_file);
         if (!config) {
             log_error ("Failed to load config file %s: %m", config_file);
-            exit (EXIT_FAILURE);
+            return EXIT_FAILURE;
         }
 
         if (streq (zconfig_get (config, "server/verbose", "false"), "true")) {
             verbose = true;
         }
+
         // State file
         state_file = strdup(s_get (config, "server/statefile", DEFAULT_STATEFILE_PATH));
+
         // Polling interval
         str_poll_interval = s_get (config, "server/check_interval", "2000");
         if (str_poll_interval) {
             poll_interval = atoi(str_poll_interval);
         }
         log_debug ("Polling interval set to %i", poll_interval);
+
         if (endpoint) zstr_free(&endpoint);
         endpoint = strdup(s_get (config, "malamute/endpoint", NULL));
+
         actor_name = strdup(s_get (config, "malamute/address", NULL));
-        log_config = strdup(s_get (config, "log/config", DEFAULT_LOG_CONFIG));
     }
 
-    if (actor_name == NULL)
+    if (actor_name == NULL) {
         actor_name = strdup(FTY_SENSOR_GPIO_AGENT);
+    }
 
-    if (endpoint == NULL)
+    if (endpoint == NULL) {
         endpoint = strdup("ipc://@/malamute");
+    }
 
-    if (state_file == NULL)
+    if (state_file == NULL) {
         state_file = strdup(DEFAULT_STATEFILE_PATH);
-
-    if (log_config)
-        ManageFtyLog::getInstanceFtylog()->setConfigFile(std::string(log_config));
-
-    if (verbose)
-        ManageFtyLog::getInstanceFtylog()->setVerboseMode();
+    }
 
     // Guess the template installation directory
     char *template_dir = NULL;
@@ -194,7 +192,6 @@ int main (int argc, char *argv [])
                     log_error ("Can't find sensors template files directory!");
                     zstr_free(&actor_name);
                     zstr_free(&endpoint);
-                    zstr_free(&log_config);
                     zstr_free(&state_file);
                     return EXIT_FAILURE;
                 }
@@ -218,18 +215,35 @@ int main (int argc, char *argv [])
 
     zactor_t *server = zactor_new (fty_sensor_gpio_server, actor_name);
     zactor_t *assets = zactor_new (fty_sensor_gpio_assets, const_cast<char*>("gpio-assets"));
+    zloop_t *gpio_events = zloop_new();
+
+    #define CLEANUP do { \
+        zloop_destroy (&gpio_events); \
+        zactor_destroy (&assets); \
+        zactor_destroy (&server); \
+        zstr_free(&template_dir); \
+        zstr_free(&actor_name); \
+        zstr_free(&endpoint); \
+        zstr_free(&state_file); \
+        zconfig_destroy (&config); \
+    } while(0)
+
+    if (!(server && assets && gpio_events)) {
+        log_error("%s: initialization failed", actor_name);
+        CLEANUP;
+        return EXIT_FAILURE;
+    }
 
     log_info ("%s - Agent which manages GPI sensors and GPO devices", actor_name);
 
-    // 1rst (main) stream to handle GPx polling, metrics publication and mailbox requests
+    // 1rst (main) actor to handle GPx polling, metrics publication and mailbox requests
     // -server MUST be init'ed prior to -asset
     zstr_sendx (server, "CONNECT", endpoint, NULL);
     zstr_sendx (server, "PRODUCER", FTY_PROTO_STREAM_METRICS_SENSOR, NULL);
     zstr_sendx (server, "TEMPLATE_DIR", template_dir, NULL);
-    //zstr_sendx (server, "HW_CAP", NULL);
     zstr_sendx (server, "STATEFILE", state_file, NULL);
 
-    // 2nd stream to handle assets
+    // 2nd actor to handle assets
     zstr_sendx (assets, "TEMPLATE_DIR", template_dir, NULL);
     zstr_sendx (assets, "CONNECT", endpoint, NULL);
 
@@ -237,22 +251,15 @@ int main (int argc, char *argv [])
     // * an update event message every x microseconds, to check GPI status
     // * a request event message every 5 seconds, to request local HW capabilities
     // * asset actor production/consumption when server actor has received local HW capabilities
-    zloop_t *gpio_events = zloop_new();
     zloop_timer (gpio_events, size_t(poll_interval), 0, s_update_event, server);
     zloop_timer (gpio_events, 5000, 0, s_request_hwcap_event, server);
     zloop_timer (gpio_events, 2000, 0, s_server_ready_event, assets);
+
+    // main loop
     zloop_start (gpio_events);
 
     // Cleanup
-    zloop_destroy (&gpio_events);
-    zactor_destroy (&server);
-    zactor_destroy (&assets);
-    zstr_free(&template_dir);
-    zstr_free(&actor_name);
-    zstr_free(&endpoint);
-    zstr_free(&state_file);
-    zstr_free(&log_config);
-    zconfig_destroy (&config);
+    CLEANUP;
 
-    return 0;
+    return EXIT_SUCCESS;
 }

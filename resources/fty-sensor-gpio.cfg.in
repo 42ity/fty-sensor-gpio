@@ -27,6 +27,3 @@ hardware
         p5 = 503
 #    gpi_mapping                #   Mapping between GPI number and HW pin number
 #        <gpi number> = <pin number>
-
-log
-    config = /etc/fty/ftylog.cfg
