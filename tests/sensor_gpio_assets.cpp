@@ -41,7 +41,7 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
     zactor_t* server = zactor_new(mlm_server, const_cast<char*>("Malamute"));
     zstr_sendx(server, "BIND", endpoint, nullptr);
 
-    zactor_t* assets = zactor_new(fty_sensor_gpio_assets, const_cast<char*>("gpio-assets"));
+    zactor_t* assets = zactor_new(fty_sensor_gpio_assets, const_cast<char*>("gpio-assets-test"));
     zstr_sendx(assets, "TEMPLATE_DIR", test_data_dir, nullptr);
 
     zstr_sendx(assets, "TEST", nullptr);
@@ -71,13 +71,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(ext, "logical_asset", const_cast<char*>("Rack1"));
 
         zmsg_t* msg = fty_proto_encode_asset(aux, "sensorgpio-10", FTY_PROTO_ASSET_OP_CREATE, ext);
-
-        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-10", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-10", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Asset 2: WLD012
         aux = zhash_new();
@@ -92,13 +92,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(ext, "logical_asset", const_cast<char*>("Room1"));
 
         msg = fty_proto_encode_asset(aux, "sensorgpio-11", FTY_PROTO_ASSET_OP_CREATE, ext);
-
-        rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-11", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-11", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Asset 3: GPO-Beacon
         aux = zhash_new();
@@ -111,13 +111,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(ext, "port", const_cast<char*>("2"));
 
         msg = fty_proto_encode_asset(aux, "gpo-12", FTY_PROTO_ASSET_OP_CREATE, ext);
-
-        rv = mlm_client_send(asset_generator, "device.gpo@gpo-12", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        rv = mlm_client_send(asset_generator, "device.gpo@gpo-12", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Asset 4: inactive GPO-Beacon
         aux = zhash_new();
@@ -130,13 +130,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(ext, "port", const_cast<char*>("3"));
 
         msg = fty_proto_encode_asset(aux, "gpo-13", FTY_PROTO_ASSET_OP_CREATE, ext);
-
-        rv = mlm_client_send(asset_generator, "device.gpo@gpo-13", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        rv = mlm_client_send(asset_generator, "device.gpo@gpo-13", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Check the result list
         pthread_mutex_lock(&gpx_list_mutex);
@@ -200,13 +200,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(aux, "subtype", const_cast<char*>("gpo"));
 
         zmsg_t* msg = fty_proto_encode_asset(aux, "gpo-12", FTY_PROTO_ASSET_OP_DELETE, ext);
-
-        int rv = mlm_client_send(asset_generator, "device.gpo@gpo-12", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        int rv = mlm_client_send(asset_generator, "device.gpo@gpo-12", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Check the result list
         pthread_mutex_lock(&gpx_list_mutex);
@@ -236,13 +236,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(ext, "logical_asset", const_cast<char*>("Rack2"));
 
         zmsg_t* msg = fty_proto_encode_asset(aux, "sensorgpio-10", FTY_PROTO_ASSET_OP_UPDATE, ext);
-
-        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-10", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-10", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Check the result list
         pthread_mutex_lock(&gpx_list_mutex);
@@ -284,13 +284,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(aux, "subtype", const_cast<char*>("sensorgpio"));
 
         zmsg_t* msg = fty_proto_encode_asset(aux, "sensorgpio-10", FTY_PROTO_ASSET_OP_DELETE, ext);
-
-        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-10", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-10", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Check the result list
         pthread_mutex_lock(&gpx_list_mutex);
@@ -324,13 +324,13 @@ TEST_CASE("sensor gpio assets test") //, "[.]")
         zhash_update(ext, "logical_asset", const_cast<char*>("Room1"));
 
         zmsg_t* msg = fty_proto_encode_asset(aux, "sensorgpio-11", FTY_PROTO_ASSET_OP_UPDATE, ext);
-
-        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-11", &msg);
-        REQUIRE(rv == 0);
         zhash_destroy(&aux);
         zhash_destroy(&ext);
-        zclock_sleep(1000);
+
+        int rv = mlm_client_send(asset_generator, "device.sensorgpio@sensorgpio-11", &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0);
+        zclock_sleep(1000);
 
         // Check the result list
         pthread_mutex_lock(&gpx_list_mutex);

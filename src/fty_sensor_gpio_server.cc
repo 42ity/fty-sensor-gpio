@@ -139,6 +139,7 @@ sensor_partnumber/manufacturer/type/normal_state/gpx_direction/alarm_severity/al
 #include "fty_sensor_gpio.h"
 #include <fty_log.h>
 #include <fty_proto.h>
+#include <fty_shm.h>
 #include <malamute.h>
 #include <regex>
 #include <stdio.h>
@@ -204,40 +205,44 @@ static void free_fn(void** self_ptr)
 //  --------------------------------------------------------------------------
 //  Publish status of the pointed GPIO sensor
 
-void publish_status(fty_sensor_gpio_server_t* self, gpx_info_t* sensor, int ttl)
+static void publish_status(gpx_info_t* sensor, int ttl)
 {
     log_debug("Publishing GPIO sensor %i (%s) status", sensor->gpx_number, sensor->asset_name);
 
-    char port[6]; // "GPI" + "xx" + '\0'
+    char port[16]; // "GPI" + "xx" + '\0'
     memset(port, 0, sizeof(port));
     snprintf(port, sizeof(port), "GP%c%i", ((sensor->gpx_direction == GPIO_DIRECTION_IN) ? 'I' : 'O'), sensor->gpx_number);
 
-    zhash_t* aux = zhash_new();
-    zhash_autofree(aux);
-    zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_PORT, static_cast<void*>(port));
-    zhash_insert(aux, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, static_cast<void*>(sensor->asset_name));
+    std::string type = "status." + std::string(port);
 
-    std::string msg_type = std::string("status.") + port;
-
-    zmsg_t* msg = fty_proto_encode_metric(aux, uint64_t(time(nullptr)), uint32_t(ttl), msg_type.c_str(),
-        sensor->parent, // sensor->asset_name
-        libgpio_get_status_string(sensor->current_state).c_str(), "");
-
-    zhash_destroy(&aux);
+    zmsg_t* msg = fty_proto_encode_metric(
+        NULL /*aux*/,
+        uint64_t(time(nullptr)),
+        uint32_t(ttl),
+        type.c_str(),
+        sensor->asset_name,
+        libgpio_get_status_string(sensor->current_state).c_str(),
+        "" /*unit*/
+    );
 
     if (msg) {
-        std::string topic = msg_type + std::string("@") + sensor->parent;
-        //        "status." + port + "@" + _location;
+        log_debug("Port: %s, type: %s, status: %s", port, type.c_str(), libgpio_get_status_string(sensor->current_state).c_str());
 
-        log_debug("\tPort: %s, type: %s, status: %s", port, msg_type.c_str(),
-            libgpio_get_status_string(sensor->current_state).c_str());
+        // write in shared memory
+        fty_proto_t* metric = fty_proto_decode(&msg);
+        int r = metric ? fty::shm::write_metric(metric) : -99;
+        fty_proto_destroy(&metric);
 
-        int r = mlm_client_send(self->mlm, topic.c_str(), &msg);
+        std::string topic = type + std::string("@") + sensor->asset_name; // "status." + port + "@" + sname;
         if (r != 0) {
-            log_error("failed to send measurement %s (result: %d)", topic.c_str(), r);
+            log_error("failed to write metric %s (result: %d)", topic.c_str(), r);
         }
-        zmsg_destroy(&msg);
+        else {
+            log_debug("shm write_metric succeeded (%s)", topic.c_str());
+        }
+
     }
+    zmsg_destroy(&msg);
 }
 
 //  --------------------------------------------------------------------------
@@ -319,7 +324,7 @@ static void s_check_gpio_status(fty_sensor_gpio_server_t* self)
                     libgpio_get_status_string(gpx_info->current_state).c_str(), gpx_info->current_state,
                     gpx_info->gpx_number, gpx_info->ext_name, gpx_info->asset_name);
 
-                publish_status(self, gpx_info, 300);
+                publish_status(gpx_info, 300);
             }
         }
         gpx_info = static_cast<gpx_info_t*>(zlistx_next(gpx_list));
@@ -334,9 +339,15 @@ void static s_handle_mailbox(fty_sensor_gpio_server_t* self, zmsg_t* message)
     std::string subject = mlm_client_subject(self->mlm);
 
     // we assume all request command are MAILBOX DELIVER, and subject="gpio"
-    if ((subject != "") && (subject != "GPO_INTERACTION") && (subject != "GPIO_TEMPLATE_ADD") &&
-        (subject != "GPIO_MANIFEST") && (subject != "GPIO_MANIFEST_SUMMARY") && (subject != "GPIO_TEST") &&
-        (subject != "GPOSTATE") && (subject != "ERROR")) {
+    if ((subject != "")
+        && (subject != "GPO_INTERACTION")
+        && (subject != "GPIO_TEMPLATE_ADD")
+        && (subject != "GPIO_MANIFEST")
+        && (subject != "GPIO_MANIFEST_SUMMARY")
+        && (subject != "GPIO_TEST")
+        && (subject != "GPOSTATE")
+        && (subject != "ERROR")
+    ) {
         log_warning("%s: Received unexpected subject '%s' from '%s'", self->name, subject.c_str(),
             mlm_client_sender(self->mlm));
         zmsg_t* reply = zmsg_new();
@@ -713,7 +724,7 @@ void static s_handle_mailbox(fty_sensor_gpio_server_t* self, zmsg_t* message)
 fty_sensor_gpio_server_t* fty_sensor_gpio_server_new(const char* name)
 {
     fty_sensor_gpio_server_t* self = static_cast<fty_sensor_gpio_server_t*>(zmalloc(sizeof(fty_sensor_gpio_server_t)));
-    assert(self);
+    if (!self) return NULL;
 
     //  Initialize class properties
     self->mlm          = mlm_client_new();
@@ -753,9 +764,10 @@ void fty_sensor_gpio_server_destroy(fty_sensor_gpio_server_t** self_p)
 
 static void s_load_state_file(fty_sensor_gpio_server_t* self, const char* state_file)
 {
-    if (!state_file)
-        // no state file - alright
+    if (!state_file) { // no state file - alright
         return;
+    }
+
     log_debug("state file = %s", state_file);
     FILE* f_state = fopen(state_file, "r");
     if (!f_state) {

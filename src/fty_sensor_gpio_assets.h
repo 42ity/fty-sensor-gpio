@@ -39,6 +39,9 @@ void fty_sensor_gpio_assets(zsock_t* pipe, void* args);
 ///  Create a new fty_sensor_gpio_assets
 fty_sensor_gpio_assets_t* fty_sensor_gpio_assets_new(const char* name);
 
+// set test mode (conf. for UT)
+void fty_sensor_gpio_assets_set_test(fty_sensor_gpio_assets_t* self, bool test_mode);
+
 ///  Destroy the fty_sensor_gpio_assets
 void fty_sensor_gpio_assets_destroy(fty_sensor_gpio_assets_t** self_p);
 

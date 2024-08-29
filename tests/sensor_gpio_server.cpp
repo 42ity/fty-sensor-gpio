@@ -21,12 +21,13 @@
 #include "src/libgpio.h"
 #include <czmq.h>
 #include <fty_proto.h>
+#include <fty_shm.h>
 #include <malamute.h>
 
 extern zmsg_t* hw_cap_test_reply_gpi;
 extern zmsg_t* hw_cap_test_reply_gpo;
 
-static void libgpio_test()
+TEST_CASE ("libgpio test")
 {
     const char* SELFTEST_DIR_RW = ".";
 
@@ -73,16 +74,21 @@ static void libgpio_test()
     libgpio_destroy(&self);
 }
 
+static void print_metrics()
+{
+    fty::shm::shmMetrics metrics;
+    fty::shm::read_metrics(".*", ".*", metrics);
+
+    printf("== metrics (size: %lu)\n", metrics.size());
+    int cpt = 0;
+    for (auto& metric : metrics) {
+        printf("== %d: %s@%s/%s (ttl=%us)\n", cpt++,
+            fty_proto_type(metric), fty_proto_name(metric), fty_proto_value(metric), fty_proto_ttl(metric));
+    }
+}
 
 TEST_CASE("sensor gpio server test")
 {
-    libgpio_test();
-    // FIXME: disable -server test for now, while waiting to catch
-    // the malamute race-cond leak
-    // See https://github.com/42ity/fty-sensor-gpio/issues/11
-    // printf ("OK\n");
-    // return;
-
     // Note: If your selftest reads SCMed fixture data, please keep it in
     // selftest-ro; if your test creates filesystem objects, please
     // do so under selftest-rw. They are defined below along with a
@@ -91,6 +97,11 @@ TEST_CASE("sensor gpio server test")
 
     // Uncomment these to use C++ std::strings in C++ selftest code:
     std::string str_SELFTEST_DIR_RW = std::string(SELFTEST_DIR_RW);
+
+    //const int polling_value = fty_get_polling_interval();
+    //fty_shm_set_default_polling_interval(polling_value);
+    REQUIRE(fty_shm_set_test_dir("./tests/server") == 0);
+    print_metrics();
 
     //  @selftest
     static const char* endpoint = "inproc://fty_sensor_gpio_server_test";
@@ -104,9 +115,11 @@ TEST_CASE("sensor gpio server test")
     std::string template_dir = str_SELFTEST_DIR_RW + "/data/";
     zsys_dir_create(template_dir.c_str());
     zactor_t* server = zactor_new(mlm_server, const_cast<char*>("Malamute"));
+    REQUIRE(server);
     zstr_sendx(server, "BIND", endpoint, nullptr);
 
-    zactor_t* self = zactor_new(fty_sensor_gpio_server, const_cast<char*>(FTY_SENSOR_GPIO_AGENT));
+    const char* SENSOR_GPIO_SERVER_NAME = "fty-sensor-gpio-server-test";
+    zactor_t* self = zactor_new(fty_sensor_gpio_server, const_cast<char*>(SENSOR_GPIO_SERVER_NAME));
     REQUIRE(self);
 
     // Forge a HW_CAP reply message
@@ -141,15 +154,16 @@ TEST_CASE("sensor gpio server test")
     // TEST *MUST* be set first, before HW_CAP, for HW capabilities
     zstr_sendx(self, "TEST", nullptr);
     zstr_sendx(self, "CONNECT", endpoint, nullptr);
-    zstr_sendx(self, "PRODUCER", FTY_PROTO_STREAM_METRICS_SENSOR, nullptr);
     zstr_sendx(self, "TEMPLATE_DIR", template_dir.c_str(), nullptr);
     zstr_sendx(self, "HW_CAP", nullptr);
 
     mlm_client_t* mb_client = mlm_client_new();
-    mlm_client_connect(mb_client, endpoint, 1000, "fty_sensor_gpio_client");
+    REQUIRE(mb_client);
+    mlm_client_connect(mb_client, endpoint, 1000, "fty_sensor_gpio_client_test");
 
     // Prepare the testbed with 2 assets (1xGPI + 1xGPO)
-    fty_sensor_gpio_assets_t* assets_self = fty_sensor_gpio_assets_new("gpio-assets");
+    fty_sensor_gpio_assets_t* assets_self = fty_sensor_gpio_assets_new("gpio-assets-test");
+    fty_sensor_gpio_assets_set_test(assets_self, true);
 
     int rv = add_sensor(assets_self, "create", "Eaton", "sensorgpio-10", "GPIO-Sensor-Door1", "DCS001",
         "door-contact-sensor", "closed", "1", "GPI", "IPC1", "Rack1", "", "Door has been $status", "WARNING");
@@ -193,45 +207,35 @@ TEST_CASE("sensor gpio server test")
         zmsg_t* msg = zmsg_new();
         zmsg_addstr(msg, "sensorgpio-11");
         zmsg_addstr(msg, "2");
-        zmsg_addstr(msg, "closed");
-        rv = mlm_client_sendto(mb_client, FTY_SENSOR_GPIO_AGENT, "GPOSTATE", nullptr, 5000, &msg);
-
-        REQUIRE(rv == 0); // no response
-
-        mlm_client_t* metrics_listener = mlm_client_new();
-        mlm_client_connect(metrics_listener, endpoint, 1000, "fty_sensor_gpio_metrics_listener");
-        mlm_client_set_consumer(metrics_listener, FTY_PROTO_STREAM_METRICS_SENSOR, ".*");
-        zclock_sleep(1000);
-        // Send an update and check for the generated metric
-        zstr_sendx(self, "UPDATE", endpoint, nullptr);
-        // Check the published metric
-        zmsg_t* recv = mlm_client_recv(metrics_listener);
-        REQUIRE(recv);
-        fty_proto_t* frecv = fty_proto_decode(&recv);
-        REQUIRE(frecv);
-        CHECK(streq(fty_proto_name(frecv), "IPC1"));
-        CHECK(streq(fty_proto_type(frecv), "status.GPI1"));
-        CHECK(streq(fty_proto_aux_string(frecv, "port", nullptr), "GPI1"));
-        CHECK(streq(fty_proto_value(frecv), "closed"));
-        CHECK(streq(fty_proto_aux_string(frecv, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, nullptr), "sensorgpio-10"));
-
-        fty_proto_destroy(&frecv);
-        zmsg_destroy(&recv);
-
-        recv = mlm_client_recv(metrics_listener);
-        REQUIRE(recv);
-        frecv = fty_proto_decode(&recv);
-        REQUIRE(frecv);
-        CHECK(streq(fty_proto_name(frecv), "IPC1"));
-        CHECK(streq(fty_proto_type(frecv), "status.GPO2"));
-        CHECK(streq(fty_proto_aux_string(frecv, "port", nullptr), "GPO2"));
-        CHECK(streq(fty_proto_value(frecv), "closed"));
-        CHECK(streq(fty_proto_aux_string(frecv, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, nullptr), "gpo-11"));
-        fty_proto_destroy(&frecv);
-        zmsg_destroy(&recv);
+        zmsg_addstr(msg, "closed"); // default state
+        rv = mlm_client_sendto(mb_client, SENSOR_GPIO_SERVER_NAME, "GPOSTATE", nullptr, 5000, &msg);
         zmsg_destroy(&msg);
+        REQUIRE(rv == 0); // no response
+        zclock_sleep(1000); // sync
 
-        mlm_client_destroy(&metrics_listener);
+        // request internal server updates & sync
+        zstr_send (self, "UPDATE");
+        zclock_sleep(1000);
+
+        print_metrics();
+
+        fty_proto_t* metric = NULL;
+        rv = fty::shm::read_metric("sensorgpio-10", "status.GPI1", &metric);
+        CHECK(rv == 0);
+        if (metric) fty_proto_print(metric);
+        CHECK(streq(fty_proto_name(metric), "sensorgpio-10"));
+        CHECK(streq(fty_proto_type(metric), "status.GPI1"));
+        CHECK(streq(fty_proto_value(metric), "closed"));
+        fty_proto_destroy(&metric);
+
+        metric = NULL;
+        rv = fty::shm::read_metric("gpo-11", "status.GPO2", &metric);
+        CHECK(rv == 0);
+        if (metric) fty_proto_print(metric);
+        CHECK(streq(fty_proto_name(metric), "gpo-11"));
+        CHECK(streq(fty_proto_type(metric), "status.GPO2"));
+        CHECK(streq(fty_proto_value(metric), "closed"));
+        fty_proto_destroy(&metric);
     }
 
     // Test #2: Post a GPIO_TEMPLATE_ADD request and check the file created
@@ -250,7 +254,7 @@ TEST_CASE("sensor gpio server test")
         zmsg_addstr(msg, "WARNING");         // alarm_severity
         zmsg_addstr(msg, "test triggered");  // alarm_message
 
-        rv = mlm_client_sendto(mb_client, FTY_SENSOR_GPIO_AGENT, "GPIO_TEMPLATE_ADD", nullptr, 5000, &msg);
+        rv = mlm_client_sendto(mb_client, SENSOR_GPIO_SERVER_NAME, "GPIO_TEMPLATE_ADD", nullptr, 5000, &msg);
         REQUIRE(rv == 0);
 
         // Check the server answer
@@ -275,7 +279,7 @@ TEST_CASE("sensor gpio server test")
         zmsg_t*  msg   = zmsg_new();
         zuuid_t* zuuid = zuuid_new();
         zmsg_addstr(msg, zuuid_str_canonical(zuuid));
-        rv = mlm_client_sendto(mb_client, FTY_SENSOR_GPIO_AGENT, "GPIO_MANIFEST", nullptr, 5000, &msg);
+        rv = mlm_client_sendto(mb_client, SENSOR_GPIO_SERVER_NAME, "GPIO_MANIFEST", nullptr, 5000, &msg);
         REQUIRE(rv == 0);
 
         // Check the server answer
@@ -322,7 +326,7 @@ TEST_CASE("sensor gpio server test")
         zuuid_t* zuuid = zuuid_new();
         zmsg_addstr(msg, zuuid_str_canonical(zuuid));
 
-        rv = mlm_client_sendto(mb_client, FTY_SENSOR_GPIO_AGENT, "GPIO_MANIFEST_SUMMARY", nullptr, 5000, &msg);
+        rv = mlm_client_sendto(mb_client, SENSOR_GPIO_SERVER_NAME, "GPIO_MANIFEST_SUMMARY", nullptr, 5000, &msg);
         REQUIRE(rv == 0);
 
         // Check the server answer
@@ -352,7 +356,7 @@ TEST_CASE("sensor gpio server test")
         zmsg_addstr(msg, zuuid_str_canonical(zuuid));
         zmsg_addstr(msg, "gpo-11"); // sensor
         zmsg_addstr(msg, "open");   // action
-        rv = mlm_client_sendto(mb_client, FTY_SENSOR_GPIO_AGENT, "GPO_INTERACTION", nullptr, 5000, &msg);
+        rv = mlm_client_sendto(mb_client, SENSOR_GPIO_SERVER_NAME, "GPO_INTERACTION", nullptr, 5000, &msg);
         REQUIRE(rv == 0);
 
         // Check the server answer
@@ -390,7 +394,7 @@ TEST_CASE("sensor gpio server test")
         zmsg_addstr(msg, zuuid_str_canonical(zuuid));
         zmsg_addstr(msg, "gpo-12"); // sensor
         zmsg_addstr(msg, "open");   // action
-        rv = mlm_client_sendto(mb_client, FTY_SENSOR_GPIO_AGENT, "GPO_INTERACTION", nullptr, 5000, &msg);
+        rv = mlm_client_sendto(mb_client, SENSOR_GPIO_SERVER_NAME, "GPO_INTERACTION", nullptr, 5000, &msg);
         REQUIRE(rv == 0);
 
         // Check the server answer
@@ -419,6 +423,8 @@ TEST_CASE("sensor gpio server test")
     // Test #7: Disable all GPI/GPO (as on OVA),
     // Create a sensor and verify that it fails
     {
+        fty_sensor_gpio_assets_set_test(assets_self, false);
+
         zmsg_destroy(&hw_cap_test_reply_gpi);
         zmsg_destroy(&hw_cap_test_reply_gpo);
 
@@ -460,6 +466,8 @@ TEST_CASE("sensor gpio server test")
     mlm_client_destroy(&mb_client);
     zactor_destroy(&self);
     zactor_destroy(&server);
+
+    fty_shm_delete_test_dir();
 
     //  @end
     printf("OK\n");
