@@ -102,6 +102,12 @@ int main (int argc, char *argv [])
     int poll_interval = DEFAULT_POLL_INTERVAL;
     bool verbose = false;
 
+    #define CLEANUP_STRINGS do { \
+        zstr_free(&state_file); \
+        zstr_free(&actor_name); \
+        zstr_free(&endpoint); \
+    } while(0)
+
     // Parse command line
     for (int argn = 1; argn < argc; argn++) {
         const char* arg = argv [argn];
@@ -109,6 +115,7 @@ int main (int argc, char *argv [])
 
         if (streq (arg, "--help") ||  streq (arg, "-h")) {
             usage();
+            CLEANUP_STRINGS;
             return EXIT_SUCCESS;
         }
         else if (streq (arg, "--verbose") || streq (arg, "-v")) {
@@ -124,6 +131,7 @@ int main (int argc, char *argv [])
         }
         else {
             printf ("Unknown option: %s\n", arg);
+            CLEANUP_STRINGS;
             return EXIT_FAILURE;
         }
     }
@@ -139,6 +147,7 @@ int main (int argc, char *argv [])
         config = zconfig_load (config_file);
         if (!config) {
             log_error ("Failed to load config file %s: %m", config_file);
+            CLEANUP_STRINGS;
             return EXIT_FAILURE;
         }
 
@@ -147,6 +156,7 @@ int main (int argc, char *argv [])
         }
 
         // State file
+        zstr_free(&state_file);
         state_file = strdup(s_get (config, "server/statefile", DEFAULT_STATEFILE_PATH));
 
         // Polling interval
@@ -156,21 +166,22 @@ int main (int argc, char *argv [])
         }
         log_debug ("Polling interval set to %i", poll_interval);
 
-        if (endpoint) zstr_free(&endpoint);
+        zstr_free(&endpoint);
         endpoint = strdup(s_get (config, "malamute/endpoint", NULL));
 
+        zstr_free(&actor_name);
         actor_name = strdup(s_get (config, "malamute/address", NULL));
     }
 
-    if (actor_name == NULL) {
+    if (!actor_name) {
         actor_name = strdup(FTY_SENSOR_GPIO_AGENT);
     }
 
-    if (endpoint == NULL) {
+    if (!endpoint) {
         endpoint = strdup("ipc://@/malamute");
     }
 
-    if (state_file == NULL) {
+    if (!state_file) {
         state_file = strdup(DEFAULT_STATEFILE_PATH);
     }
 
@@ -187,9 +198,7 @@ int main (int argc, char *argv [])
                 template_file = fopen(template_filename.c_str(), "r");
                 if (!template_file) {
                     log_error ("Can't find sensors template files directory!");
-                    zstr_free(&actor_name);
-                    zstr_free(&endpoint);
-                    zstr_free(&state_file);
+                    CLEANUP_STRINGS;
                     return EXIT_FAILURE;
                 }
                 else {
@@ -215,13 +224,11 @@ int main (int argc, char *argv [])
     zloop_t *gpio_events = zloop_new();
 
     #define CLEANUP do { \
+        CLEANUP_STRINGS; \
         zloop_destroy (&gpio_events); \
         zactor_destroy (&assets); \
         zactor_destroy (&server); \
         zstr_free(&template_dir); \
-        zstr_free(&actor_name); \
-        zstr_free(&endpoint); \
-        zstr_free(&state_file); \
         zconfig_destroy (&config); \
     } while(0)
 
