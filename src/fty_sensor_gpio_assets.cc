@@ -33,17 +33,33 @@ zlistx_t* _gpx_list = NULL;
 // GPx list protection mutex
 pthread_mutex_t gpx_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-
 //  --------------------------------------------------------------------------
 //  Return the list of monitored sensors without transfering ownership
 
 zlistx_t* get_gpx_list()
 {
-    if (!_gpx_list)
+    if (!_gpx_list) {
         log_debug("GPx list not initialized, skipping");
+    }
     // return zlistx_dup (_gpx_list);
     return _gpx_list;
 }
+
+//  --------------------------------------------------------------------------
+
+#ifdef __COVERITY__
+static gpx_info_t* sensor_new() { __coverity_alloc_nosize__(); }
+static void sensor_destroy(gpx_info_t** p) { __coverity_free__(*p); }
+static void sensor_free(void** p) { __coverity_free__(*p); }
+void zstr_free(char** p) { __coverity_free__(*p); }
+#endif
+
+#ifdef __COVERITY__
+//_gpx_list management
+void zlistx_add_end(zlistx_t *self, void *item) { __coverity_escape__(item); }
+void zlistx_add_start(zlistx_t *self, void *item) { __coverity_escape__(item); }
+void zlistx_insert(zlistx_t *self, void *item) { __coverity_escape__(item); }
+#endif
 
 //  --------------------------------------------------------------------------
 //  zlist handling -- destroy an item
@@ -263,6 +279,8 @@ static int delete_sensor(fty_sensor_gpio_assets_t* self, const char* assetname)
         log_error("Can't allocate gpx_info!");
         return 1;
     }
+
+    zstr_free(&gpx_info->asset_name);
     gpx_info->asset_name = strdup(assetname);
 
     pthread_mutex_lock(&gpx_list_mutex);

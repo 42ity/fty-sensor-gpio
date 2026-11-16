@@ -167,6 +167,11 @@ struct _fty_sensor_gpio_server_t
 };
 typedef struct _fty_sensor_gpio_server_t fty_sensor_gpio_server_t;
 
+#ifdef __COVERITY__
+//gpo_states management
+void zhashx_update(zhashx_t *self, const void *key, void *item) { __coverity_escape__(item); }
+#endif
+
 // Flag to share if HW capabilities were successfully received
 bool hw_cap_inited = false;
 
